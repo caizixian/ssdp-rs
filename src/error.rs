@@ -1,14 +1,14 @@
 use std::io;
 use std::net;
+use hyper;
 
-use error_chain::error_chain;
-// Enumerates all errors that can occur when dealing with an SSDP message.
+/// Enumerates all errors that can occur when dealing with an SSDP message.
 error_chain! {
 
     types {
         SSDPError, SSDPErrorKind, SSDPResultExt, SSDPResult;
     }
-
+    
     errors {
         /// Message is not valid HTTP.
         ///

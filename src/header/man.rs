@@ -1,10 +1,10 @@
 use std::fmt::{Formatter, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{Header, HeaderFormat};
+use hyper::header::{HeaderFormat, Header};
 
-const MAN_HEADER_NAME: &str = "MAN";
-const MAN_HEADER_VALUE: &str = "\"ssdp:discover\"";
+const MAN_HEADER_NAME: &'static str = "MAN";
+const MAN_HEADER_VALUE: &'static str = "\"ssdp:discover\"";
 
 /// Represents a header used to specify HTTP extension.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -30,7 +30,7 @@ impl Header for Man {
 
 impl HeaderFormat for Man {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
-        fmt.write_str(MAN_HEADER_VALUE)?;
+        try!(fmt.write_str(MAN_HEADER_VALUE));
 
         Ok(())
     }

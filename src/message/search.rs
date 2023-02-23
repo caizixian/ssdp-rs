@@ -1,18 +1,19 @@
 use std::borrow::Cow;
 use std::fmt::Debug;
-use std::io;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
+use std::io;
 
-use crate::error::SSDPResult;
-use crate::header::{HeaderMut, HeaderRef, MX};
-use crate::message::multicast::{self, Multicast};
-use crate::message::ssdp::SSDPMessage;
-use crate::message::{Config, Listen, MessageType};
-use crate::receiver::{FromRawSSDP, SSDPReceiver};
-use crate::{message, SSDPErrorKind};
-use crate::{net, SSDPError};
 use hyper::header::{Header, HeaderFormat};
+
+use error::SSDPResult;
+use header::{HeaderRef, HeaderMut, MX};
+use message::{self, MessageType, Listen, Config};
+use message::ssdp::SSDPMessage;
+use message::multicast::{self, Multicast};
+use receiver::{SSDPReceiver, FromRawSSDP};
+use net;
+
 
 /// Overhead to add to device response times to account for transport time.
 const NETWORK_TIMEOUT_OVERHEAD: u8 = 1;
@@ -29,9 +30,7 @@ pub struct SearchRequest {
 impl SearchRequest {
     /// Construct a new SearchRequest.
     pub fn new() -> SearchRequest {
-        SearchRequest {
-            message: SSDPMessage::new(MessageType::Search),
-        }
+        SearchRequest { message: SSDPMessage::new(MessageType::Search) }
     }
 
     /// Send this search request to a single host.
@@ -40,20 +39,20 @@ impl SearchRequest {
     /// interfaces. This assumes that the network interfaces are operating
     /// on either different subnets or different ip address ranges.
     pub fn unicast<A: ToSocketAddrs>(&mut self, dst_addr: A) -> SSDPResult<SSDPReceiver<SearchResponse>> {
-        let mode = net::IpVersionMode::from_addr(&dst_addr)?;
-        let mut connectors = crate::message::all_local_connectors(None, &mode)?;
+        let mode = try!(net::IpVersionMode::from_addr(&dst_addr));
+        let mut connectors = try!(message::all_local_connectors(None, &mode));
 
         // Send On All Connectors
         for connector in &mut connectors {
-            self.message.send(connector, &dst_addr)?;
+            try!(self.message.send(connector, &dst_addr));
         }
 
         let mut raw_connectors = Vec::with_capacity(connectors.len());
         raw_connectors.extend(connectors.into_iter().map(|conn| conn.deconstruct()));
 
         let opt_timeout = opt_unicast_timeout(self.get::<MX>());
-        let receiver = SSDPReceiver::new(raw_connectors, opt_timeout)?;
-        Ok(receiver)
+
+        Ok(try!(SSDPReceiver::new(raw_connectors, opt_timeout)))
     }
 }
 
@@ -63,11 +62,11 @@ impl Multicast for SearchRequest {
     fn multicast_with_config(&self, config: &Config) -> SSDPResult<Self::Item> {
         let connectors = multicast::send(&self.message, config)?;
 
-        let mcast_timeout = multicast_timeout(self.get::<MX>())?;
+        let mcast_timeout = try!(multicast_timeout(self.get::<MX>()));
         let mut raw_connectors = Vec::with_capacity(connectors.len());
         raw_connectors.extend(connectors.into_iter().map(|conn| conn.deconstruct()));
-        let reciver = SSDPReceiver::new(raw_connectors, Some(mcast_timeout))?;
-        Ok(reciver)
+
+        Ok(try!(SSDPReceiver::new(raw_connectors, Some(mcast_timeout))))
     }
 }
 
@@ -81,7 +80,7 @@ impl Default for SearchRequest {
 fn multicast_timeout(mx: Option<&MX>) -> SSDPResult<Duration> {
     match mx {
         Some(&MX(n)) => Ok(Duration::new((n + NETWORK_TIMEOUT_OVERHEAD) as u64, 0)),
-        None => Err("Multicast Searches Require An MX Header".into()),
+        None => try!(Err("Multicast Searches Require An MX Header")),
     }
 }
 
@@ -95,20 +94,19 @@ fn opt_unicast_timeout(mx: Option<&MX>) -> Option<Duration> {
 
 impl FromRawSSDP for SearchRequest {
     fn raw_ssdp(bytes: &[u8]) -> SSDPResult<SearchRequest> {
-        let message = SSDPMessage::raw_ssdp(bytes)?;
+        let message = try!(SSDPMessage::raw_ssdp(bytes));
 
         if message.message_type() != MessageType::Search {
-            Err("SSDP Message Received Is Not A SearchRequest".into())
+            try!(Err("SSDP Message Received Is Not A SearchRequest"))
         } else {
-            Ok(SearchRequest { message })
+            Ok(SearchRequest { message: message })
         }
     }
 }
 
 impl HeaderRef for SearchRequest {
     fn get<H>(&self) -> Option<&H>
-    where
-        H: Header + HeaderFormat,
+        where H: Header + HeaderFormat
     {
         self.message.get::<H>()
     }
@@ -120,15 +118,13 @@ impl HeaderRef for SearchRequest {
 
 impl HeaderMut for SearchRequest {
     fn set<H>(&mut self, value: H)
-    where
-        H: Header + HeaderFormat,
+        where H: Header + HeaderFormat
     {
         self.message.set(value)
     }
 
     fn set_raw<K>(&mut self, name: K, value: Vec<Vec<u8>>)
-    where
-        K: Into<Cow<'static, str>> + Debug,
+        where K: Into<Cow<'static, str>> + Debug
     {
         self.message.set_raw(name, value)
     }
@@ -143,9 +139,7 @@ pub struct SearchResponse {
 impl SearchResponse {
     /// Construct a new SearchResponse.
     pub fn new() -> SearchResponse {
-        SearchResponse {
-            message: SSDPMessage::new(MessageType::Response),
-        }
+        SearchResponse { message: SSDPMessage::new(MessageType::Response) }
     }
 
     /// Send this search response to a single host.
@@ -154,8 +148,8 @@ impl SearchResponse {
     /// interfaces. This assumes that the network interfaces are operating
     /// on either different subnets or different ip address ranges.
     pub fn unicast<A: ToSocketAddrs>(&mut self, dst_addr: A) -> SSDPResult<()> {
-        let mode = net::IpVersionMode::from_addr(&dst_addr)?;
-        let mut connectors = message::all_local_connectors(None, &mode)?;
+        let mode = try!(net::IpVersionMode::from_addr(&dst_addr));
+        let mut connectors = try!(message::all_local_connectors(None, &mode));
 
         let mut success_count = 0;
         let mut error_count = 0;
@@ -169,7 +163,7 @@ impl SearchResponse {
         }
 
         if success_count == 0 && error_count > 0 {
-            return Err(SSDPError::from_kind(SSDPErrorKind::Io(io::Error::last_os_error())));
+            try!(Err(io::Error::last_os_error()));
         }
 
         Ok(())
@@ -191,20 +185,19 @@ impl Listen for SearchListener {
 
 impl FromRawSSDP for SearchResponse {
     fn raw_ssdp(bytes: &[u8]) -> SSDPResult<SearchResponse> {
-        let message = SSDPMessage::raw_ssdp(bytes)?;
+        let message = try!(SSDPMessage::raw_ssdp(bytes));
 
         if message.message_type() != MessageType::Response {
-            Err("SSDP Message Received Is Not A SearchResponse".into())
+            try!(Err("SSDP Message Received Is Not A SearchResponse"))
         } else {
-            Ok(SearchResponse { message })
+            Ok(SearchResponse { message: message })
         }
     }
 }
 
 impl HeaderRef for SearchResponse {
     fn get<H>(&self) -> Option<&H>
-    where
-        H: Header + HeaderFormat,
+        where H: Header + HeaderFormat
     {
         self.message.get::<H>()
     }
@@ -216,15 +209,13 @@ impl HeaderRef for SearchResponse {
 
 impl HeaderMut for SearchResponse {
     fn set<H>(&mut self, value: H)
-    where
-        H: Header + HeaderFormat,
+        where H: Header + HeaderFormat
     {
         self.message.set(value)
     }
 
     fn set_raw<K>(&mut self, name: K, value: Vec<Vec<u8>>)
-    where
-        K: Into<Cow<'static, str>> + Debug,
+        where K: Into<Cow<'static, str>> + Debug
     {
         self.message.set_raw(name, value)
     }
@@ -232,7 +223,7 @@ impl HeaderMut for SearchResponse {
 
 #[cfg(test)]
 mod tests {
-    use crate::header::MX;
+    use header::MX;
 
     #[test]
     fn positive_multicast_timeout() {

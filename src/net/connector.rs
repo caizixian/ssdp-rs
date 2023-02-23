@@ -1,12 +1,12 @@
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs, UdpSocket};
+use std::net::{UdpSocket, ToSocketAddrs, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use hyper::error;
 use hyper::net::NetworkConnector;
 
-use crate::net;
-use crate::net::sender::UdpSender;
+use net::sender::UdpSender;
+use net;
 
 /// A `UdpConnector` allows Hyper to obtain `NetworkStream` objects over `UdpSockets`
 /// so that Http messages created by Hyper can be sent over UDP instead of TCP.
@@ -15,10 +15,10 @@ pub struct UdpConnector(UdpSocket);
 impl UdpConnector {
     /// Create a new UdpConnector that will be bound to the given local address.
     pub fn new<A: ToSocketAddrs>(local_addr: A, _: Option<u32>) -> io::Result<UdpConnector> {
-        let addr = net::addr_from_trait(local_addr)?;
-        log::debug!("Attempting to connect to {:?}", addr);
+        let addr = try!(net::addr_from_trait(local_addr));
+        debug!("Attempting to connect to {}", addr);
 
-        let udp = UdpSocket::bind(addr)?;
+        let udp = try!(UdpSocket::bind(addr));
 
         // TODO: This throws an invalid argument error
         // if let Some(n) = multicast_ttl {
@@ -43,30 +43,23 @@ impl NetworkConnector for UdpConnector {
     type Stream = UdpSender;
 
     fn connect(&self, host: &str, port: u16, _: &str) -> error::Result<<Self as NetworkConnector>::Stream> {
-        let udp_sock = self.0.try_clone()?;
-        let sock_addr = match self.local_addr()? {
+        let udp_sock = try!(self.0.try_clone());
+        let sock_addr = match try!(self.local_addr()) {
             SocketAddr::V4(_) => {
-                let host = host.to_string();
-                let ip = match Ipv4Addr::from_str(&host) {
-                    Ok(ip) => ip,
-                    Err(e) => {
-                        let error = io::Error::new(io::ErrorKind::InvalidInput, e);
-                        return Err(error::Error::Io(error));
-                    }
-                };
-
-                let socket = SocketAddrV4::new(ip, port);
-                SocketAddr::V4(socket)
+                SocketAddr::V4(SocketAddrV4::new(try!(FromStr::from_str(host).map_err(|err| {
+                                                     io::Error::new(io::ErrorKind::InvalidInput, err)
+                                                 })),
+                                                 port))
             }
             SocketAddr::V6(n) => {
-                let mut addr: SocketAddrV6 =
-                    if host.find('[') == Some(0) && host.rfind(']') == Some(host.len() - 1) {
-                        FromStr::from_str(format!("{}:{}", host, port).as_str())
-                            .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?
-                    } else {
-                        FromStr::from_str(format!("[{}]:{}", host, port).as_str())
-                            .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?
-                    };
+                let mut addr: SocketAddrV6 = if host.find('[') == Some(0) &&
+                                                host.rfind(']') == Some(host.len() - 1) {
+                    try!(FromStr::from_str(format!("{}:{}", host, port).as_str())
+                        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err)))
+                } else {
+                    try!(FromStr::from_str(format!("[{}]:{}", host, port).as_str())
+                        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err)))
+                };
                 addr.set_flowinfo(n.flowinfo());
                 addr.set_scope_id(n.scope_id());
                 SocketAddr::V6(addr)

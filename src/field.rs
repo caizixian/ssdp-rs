@@ -3,19 +3,19 @@
 //! This module deals with interface discovery as well as HTTP extensions for
 //! accomodating SSDP.
 
-use std::borrow::Cow;
 use std::fmt::{Display, Error, Formatter};
 use std::result::Result;
+use std::borrow::Cow;
 
 /// Separator character for a `FieldMap` and it's value.
 pub const PAIR_SEPARATOR: char = ':';
 
 /// Prefix for the "upnp" field key.
-const UPNP_PREFIX: &str = "upnp";
+const UPNP_PREFIX: &'static str = "upnp";
 /// Prefix for the "uuid" field key.
-const UUID_PREFIX: &str = "uuid";
+const UUID_PREFIX: &'static str = "uuid";
 /// Prefix for the "usn" field key.
-const URN_PREFIX: &str = "urn";
+const URN_PREFIX: &'static str = "urn";
 
 /// Enumerates key value pairs embedded within SSDP header fields.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -54,7 +54,7 @@ impl FieldMap {
         value = &value[1..];
 
         // Check Empty Byte Slices
-        if key.is_empty() || value.is_empty() {
+        if key.len() == 0 || value.len() == 0 {
             return None;
         }
 
@@ -93,24 +93,24 @@ impl Display for FieldMap {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = match *self {
             FieldMap::UPnP(ref v) => {
-                f.write_str(UPNP_PREFIX)?;
+                try!(f.write_str(UPNP_PREFIX));
                 v
             }
             FieldMap::UUID(ref v) => {
-                f.write_str(UUID_PREFIX)?;
+                try!(f.write_str(UUID_PREFIX));
                 v
             }
             FieldMap::URN(ref v) => {
-                f.write_str(URN_PREFIX)?;
+                try!(f.write_str(URN_PREFIX));
                 v
             }
             FieldMap::Unknown(ref k, ref v) => {
-                Display::fmt(k, f)?;
+                try!(Display::fmt(k, f));
                 v
             }
         };
-        f.write_fmt(format_args!("{}", PAIR_SEPARATOR))?;
-        Display::fmt(value, f)?;
+        try!(f.write_fmt(format_args!("{}", PAIR_SEPARATOR)));
+        try!(Display::fmt(value, f));
         Ok(())
     }
 }
@@ -137,19 +137,15 @@ mod tests {
     #[test]
     fn positive_non_utf8() {
         let uuid_pair = FieldMap::parse_bytes(&b"uuid:some_value_\x80"[..]).unwrap();
-        assert_eq!(uuid_pair, FieldMap::uuid(String::from_utf8_lossy(b"some_value_\x80".as_ref())));
+        assert_eq!(uuid_pair, FieldMap::uuid(String::from_utf8_lossy(&b"some_value_\x80".to_vec())));
     }
 
     #[test]
     fn positive_unknown_non_utf8() {
         let unknown_pair = FieldMap::parse_bytes(&b"some_key\x80:some_value_\x80"[..]).unwrap();
-        assert_eq!(
-            unknown_pair,
-            FieldMap::unknown(
-                String::from_utf8_lossy(b"some_key\x80".as_ref()),
-                String::from_utf8_lossy(b"some_value_\x80".as_ref())
-            )
-        );
+        assert_eq!(unknown_pair,
+                   FieldMap::unknown(String::from_utf8_lossy(&b"some_key\x80".to_vec()),
+                                     String::from_utf8_lossy(&b"some_value_\x80".to_vec())));
     }
 
     #[test]

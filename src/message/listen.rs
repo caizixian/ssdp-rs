@@ -1,11 +1,10 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::{SocketAddr, IpAddr};
 
-use log::debug;
+use error::SSDPResult;
+use message::{self, Config};
+use receiver::{SSDPReceiver, FromRawSSDP};
+use net;
 
-use crate::error::SSDPResult;
-use crate::message::{self, Config};
-use crate::net;
-use crate::receiver::{FromRawSSDP, SSDPReceiver};
 
 pub trait Listen {
     type Message: FromRawSSDP + Send + 'static;
@@ -30,7 +29,7 @@ pub trait Listen {
         let mut ipv6_sock = None;
 
         // Generate a list of reused sockets on the standard multicast address.
-        let addrs: Vec<SocketAddr> = message::map_local(|&addr| Ok(Some(addr)))?;
+        let addrs: Vec<SocketAddr> = try!(message::map_local(|&addr| Ok(Some(addr))));
 
         for addr in addrs {
             match addr {
@@ -38,34 +37,35 @@ pub trait Listen {
                     let mcast_ip = config.ipv4_addr.parse().unwrap();
 
                     if ipv4_sock.is_none() {
-                        ipv4_sock = Some(net::bind_reuse(("0.0.0.0", config.port))?);
+                        ipv4_sock = Some(try!(net::bind_reuse(("0.0.0.0", config.port))));
                     }
 
-                    let sock = &ipv4_sock.as_ref().unwrap();
+                    let ref sock = ipv4_sock.as_ref().unwrap();
 
                     debug!("Joining ipv4 multicast {} at iface: {}", mcast_ip, addr);
-                    net::join_multicast(sock, &addr, &mcast_ip)?;
+                    try!(net::join_multicast(&sock, &addr, &mcast_ip));
                 }
                 SocketAddr::V6(_) => {
                     let mcast_ip = config.ipv6_addr.parse().unwrap();
 
                     if ipv6_sock.is_none() {
-                        let socket = net::bind_reuse(("::", config.port))?;
-                        ipv6_sock = Some(socket);
+                        ipv6_sock = Some(try!(net::bind_reuse(("::", config.port))));
                     }
 
-                    let sock = &ipv6_sock.as_ref().unwrap();
+                    let ref sock = ipv6_sock.as_ref().unwrap();
 
                     debug!("Joining ipv6 multicast {} at iface: {}", mcast_ip, addr);
-                    net::join_multicast(sock, &addr, &IpAddr::V6(mcast_ip))?;
+                    try!(net::join_multicast(&sock, &addr, &IpAddr::V6(mcast_ip)));
                 }
             }
         }
 
-        let sockets = vec![ipv4_sock, ipv6_sock].into_iter().flatten().collect();
+        let sockets = vec![ipv4_sock, ipv6_sock]
+            .into_iter()
+            .flat_map(|opt_interface| opt_interface)
+            .collect();
 
-        let receiver = SSDPReceiver::new(sockets, None)?;
-        Ok(receiver)
+        Ok(try!(SSDPReceiver::new(sockets, None)))
     }
 
     /// Listen on any interface
@@ -73,20 +73,19 @@ pub trait Listen {
     /// # Important
     ///
     /// This version of the `listen`()` will _bind_ to `INADDR_ANY` instead of binding to each interface
-    #[cfg(target_os = "linux")]
+    #[cfg(linux)]
     fn listen_anyaddr_with_config(config: &Config) -> SSDPResult<SSDPReceiver<Self::Message>> {
         // Ipv4
-        let mcast_ip = config.ipv4_addr.parse().unwrap();
-        let ipv4_sock = net::bind_reuse(("0.0.0.0", config.port))?;
-        ipv4_sock.join_multicast_v4(&mcast_ip, &"0.0.0.0".parse().unwrap())?;
+        let mcast_ip = config.ipv4_address.parse().unwrap();
+        let ipv4_sock = try!(net::bind_reuse(("0.0.0.0", config.port)));
+        try!(ipv4_sock.join_multicast_v4(&mcast_ip, &"0.0.0.0".parse().unwrap()));
 
         // Ipv6
-        let mcast_ip = config.ipv6_addr.parse().unwrap();
-        let ipv6_sock = net::bind_reuse(("::", config.port))?;
-        ipv6_sock.join_multicast_v6(&mcast_ip, 0)?;
+        let mcast_ip = config.ipv6_address.parse().unwrap();
+        let ipv6_sock = try!(net::bind_reuse(("::", config.port)));
+        try!(ipv6_sock.join_multicast_v6(&mcast_ip, 0));
 
         let sockets = vec![ipv4_sock, ipv6_sock];
-        let receiver = SSDPReceiver::new(sockets, None)?;
-        Ok(receiver)
+        Ok(try!(SSDPReceiver::new(sockets, None)))
     }
 }

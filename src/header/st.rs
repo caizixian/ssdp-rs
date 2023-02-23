@@ -1,13 +1,13 @@
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Formatter, Display, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{Header, HeaderFormat};
+use hyper::header::{HeaderFormat, Header};
 
-use crate::FieldMap;
+use FieldMap;
 
-const ST_HEADER_NAME: &str = "ST";
+const ST_HEADER_NAME: &'static str = "ST";
 
-const ST_ALL_VALUE: &str = "ssdp:all";
+const ST_ALL_VALUE: &'static str = "ssdp:all";
 
 /// Represents a header which specifies the search target.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -29,9 +29,7 @@ impl Header for ST {
         if &raw[0][..] == ST_ALL_VALUE.as_bytes() {
             Ok(ST::All)
         } else {
-            FieldMap::parse_bytes(&raw[0][..])
-                .map(ST::Target)
-                .ok_or(Error::Header)
+            FieldMap::parse_bytes(&raw[0][..]).map(ST::Target).ok_or(Error::Header)
         }
     }
 }
@@ -39,8 +37,8 @@ impl Header for ST {
 impl HeaderFormat for ST {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
         match *self {
-            ST::All => fmt.write_str(ST_ALL_VALUE)?,
-            ST::Target(ref n) => Display::fmt(n, fmt)?,
+            ST::All => try!(fmt.write_str(ST_ALL_VALUE)),
+            ST::Target(ref n) => try!(Display::fmt(n, fmt)),
         };
 
         Ok(())
@@ -51,8 +49,8 @@ impl HeaderFormat for ST {
 mod tests {
     use hyper::header::Header;
 
+    use FieldMap;
     use super::ST;
-    use crate::FieldMap;
 
     #[test]
     fn positive_all() {
