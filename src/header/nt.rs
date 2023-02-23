@@ -1,11 +1,11 @@
-use std::fmt::{Formatter, Display, Result};
+use std::fmt::{Display, Formatter, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{HeaderFormat, Header};
+use hyper::header::{Header, HeaderFormat};
 
-use FieldMap;
+use crate::FieldMap;
 
-const NT_HEADER_NAME: &'static str = "NT";
+const NT_HEADER_NAME: &str = "NT";
 
 /// Represents a header used to specify a notification type.
 ///
@@ -38,7 +38,7 @@ impl Header for NT {
 
 impl HeaderFormat for NT {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
-        try!(Display::fmt(&self.0, fmt));
+        Display::fmt(&self.0, fmt)?;
 
         Ok(())
     }
@@ -49,7 +49,7 @@ mod tests {
     use hyper::header::Header;
 
     use super::NT;
-    use FieldMap::{UPnP, UUID, URN, Unknown};
+    use crate::FieldMap::{UPnP, Unknown, URN, UUID};
 
     #[test]
     fn positive_uuid() {
@@ -100,7 +100,10 @@ mod tests {
         let mut original_iter = header.chars();
         let mut result_iter = k.chars().chain(sep_iter).chain(v.chars());
 
-        assert!(original_iter.by_ref().zip(result_iter.by_ref()).all(|(a, b)| a == b));
+        assert!(original_iter
+            .by_ref()
+            .zip(result_iter.by_ref())
+            .all(|(a, b)| a == b));
         assert!(result_iter.next().is_none() && original_iter.next().is_none());
     }
 
@@ -117,15 +120,18 @@ mod tests {
         let mut original_iter = header.chars();
         let mut result_iter = k.chars().chain(sep_iter).chain(v.chars());
 
-        assert!(original_iter.by_ref().zip(result_iter.by_ref()).all(|(a, b)| a == b));
+        assert!(original_iter
+            .by_ref()
+            .zip(result_iter.by_ref())
+            .all(|(a, b)| a == b));
         assert!(result_iter.next().is_none() && original_iter.next().is_none());
     }
 
     #[test]
     fn positive_leading_double_colon() {
         let leading_double_colon_header = &["uuid::a984bc8c-aaf0-5dff-b980-00d098bda247"
-                                                .to_string()
-                                                .into_bytes()];
+            .to_string()
+            .into_bytes()];
 
         let result = match NT::parse_header(leading_double_colon_header).unwrap() {
             NT(UUID(n)) => n,

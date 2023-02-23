@@ -1,15 +1,15 @@
-use std::fmt::{Formatter, Display, Result};
+use std::fmt::{Display, Formatter, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{HeaderFormat, Header};
+use hyper::header::{Header, HeaderFormat};
 
-use FieldMap;
-use field;
+use crate::field;
+use crate::FieldMap;
 
-const USN_HEADER_NAME: &'static str = "USN";
+const USN_HEADER_NAME: &str = "USN";
 
 /// Separator for multiple key/values in header fields.
-const FIELD_PAIR_SEPARATOR: &'static str = "::";
+const FIELD_PAIR_SEPARATOR: &str = "::";
 
 /// Represents a header which specifies a unique service name.
 ///
@@ -48,11 +48,11 @@ impl Header for USN {
 
 impl HeaderFormat for USN {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
-        try!(Display::fmt(&self.0, fmt));
+        Display::fmt(&self.0, fmt)?;
 
         if let Some(ref n) = self.1 {
-            try!(fmt.write_fmt(format_args!("{}", FIELD_PAIR_SEPARATOR)));
-            try!(Display::fmt(n, fmt));
+            fmt.write_fmt(format_args!("{}", FIELD_PAIR_SEPARATOR))?;
+            Display::fmt(n, fmt)?;
         }
 
         Ok(())
@@ -60,7 +60,8 @@ impl HeaderFormat for USN {
 }
 
 fn partition_pairs<'a, I>(header_iter: I) -> Option<(Vec<u8>, Option<Vec<u8>>)>
-    where I: Iterator<Item = &'a u8>
+where
+    I: Iterator<Item = &'a u8>,
 {
     let mut second_partition = false;
     let mut header_iter = header_iter.peekable();
@@ -103,7 +104,7 @@ mod tests {
     use hyper::header::Header;
 
     use super::USN;
-    use FieldMap::{UPnP, UUID, URN, Unknown};
+    use crate::FieldMap::{UPnP, Unknown, URN, UUID};
 
     #[test]
     fn positive_double_pair() {

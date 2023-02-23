@@ -1,13 +1,13 @@
 use std::fmt::{Formatter, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{HeaderFormat, Header};
+use hyper::header::{Header, HeaderFormat};
 
-const NTS_HEADER_NAME: &'static str = "NTS";
+const NTS_HEADER_NAME: &str = "NTS";
 
-const ALIVE_HEADER: &'static str = "ssdp:alive";
-const UPDATE_HEADER: &'static str = "ssdp:update";
-const BYEBYE_HEADER: &'static str = "ssdp:byebye";
+const ALIVE_HEADER: &str = "ssdp:alive";
+const UPDATE_HEADER: &str = "ssdp:update";
+const BYEBYE_HEADER: &str = "ssdp:byebye";
 
 /// Represents a header which specifies a notification sub type.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -48,9 +48,9 @@ impl Header for NTS {
 impl HeaderFormat for NTS {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
         match *self {
-            NTS::Alive => try!(fmt.write_str(ALIVE_HEADER)),
-            NTS::Update => try!(fmt.write_str(UPDATE_HEADER)),
-            NTS::ByeBye => try!(fmt.write_str(BYEBYE_HEADER)),
+            NTS::Alive => fmt.write_str(ALIVE_HEADER)?,
+            NTS::Update => fmt.write_str(UPDATE_HEADER)?,
+            NTS::ByeBye => fmt.write_str(BYEBYE_HEADER)?,
         };
 
         Ok(())

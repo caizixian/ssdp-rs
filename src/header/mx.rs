@@ -1,11 +1,11 @@
 use std::fmt::{Formatter, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{HeaderFormat, Header};
+use hyper::header::{Header, HeaderFormat};
 
-use {SSDPResult, SSDPErrorKind};
+use crate::{SSDPErrorKind, SSDPResult};
 
-const MX_HEADER_NAME: &'static str = "MX";
+const MX_HEADER_NAME: &str = "MX";
 
 /// Minimum wait time specified in the `UPnP` 1.0 standard.
 pub const MX_HEADER_MIN: u8 = 1;
@@ -26,7 +26,7 @@ pub struct MX(pub u8);
 
 impl MX {
     pub fn new(wait_bound: u8) -> SSDPResult<MX> {
-        if wait_bound < MX_HEADER_MIN || wait_bound > MX_HEADER_MAX {
+        if !(MX_HEADER_MIN..=MX_HEADER_MAX).contains(&wait_bound) {
             Err(SSDPErrorKind::InvalidHeader(MX_HEADER_NAME, "Supplied Wait Bound Is Out Of Bounds").into())
         } else {
             Ok(MX(wait_bound))
@@ -46,8 +46,8 @@ impl Header for MX {
 
         let cow_string = String::from_utf8_lossy(&raw[0][..]);
 
-        match u8::from_str_radix(&cow_string, 10) {
-            Ok(n) if n >= MX_HEADER_MIN && n <= MX_HEADER_MAX => Ok(MX(n)),
+        match cow_string.parse::<u8>() {
+            Ok(n) if (MX_HEADER_MIN..=MX_HEADER_MAX).contains(&n) => Ok(MX(n)),
             _ => Err(Error::Header),
         }
     }
@@ -55,7 +55,7 @@ impl Header for MX {
 
 impl HeaderFormat for MX {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
-        try!(fmt.write_fmt(format_args!("{}", self.0)));
+        fmt.write_fmt(format_args!("{}", self.0))?;
 
         Ok(())
     }

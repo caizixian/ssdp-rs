@@ -1,9 +1,9 @@
 use std::fmt::{Formatter, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{HeaderFormat, Header};
+use hyper::header::{Header, HeaderFormat};
 
-const SECURELOCATION_HEADER_NAME: &'static str = "SECURELOCATION.UPNP.ORG";
+const SECURELOCATION_HEADER_NAME: &str = "SECURELOCATION.UPNP.ORG";
 
 /// Represents a header used to specify a secure url for a device's DDD.
 ///
@@ -32,7 +32,7 @@ impl Header for SecureLocation {
 
 impl HeaderFormat for SecureLocation {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
-        try!(fmt.write_str(&self.0));
+        fmt.write_str(&self.0)?;
 
         Ok(())
     }

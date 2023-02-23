@@ -1,13 +1,12 @@
 use std::borrow::{Cow, ToOwned};
 use std::fmt::Debug;
 use std::io::Write;
-use std::net::{ToSocketAddrs, SocketAddr};
+use std::net::{SocketAddr, ToSocketAddrs};
 
-use hyper::Url;
 use hyper::buffer::BufReader;
-use hyper::client::request::Request;
-use hyper::header::{Headers, Header, HeaderFormat, ContentLength, Host};
-use hyper::http::RawStatus;
+use hyper::Url;
+
+use hyper::client::Request;
 use hyper::http::h1::{self, Incoming};
 use hyper::method::Method;
 use hyper::net::{NetworkConnector, NetworkStream};
@@ -15,23 +14,26 @@ use hyper::server::response::Response;
 use hyper::status::StatusCode;
 use hyper::uri::RequestUri;
 use hyper::version::HttpVersion;
+use hyper::{
+    header::{ContentLength, Header, HeaderFormat, Headers, Host},
+    http::RawStatus,
+};
 
-use {SSDPResult, SSDPErrorKind};
-use header::{HeaderRef, HeaderMut};
-use message::MessageType;
-use net;
-use receiver::FromRawSSDP;
-
+use crate::message::MessageType;
+use crate::net;
+use crate::receiver::FromRawSSDP;
+use crate::{header, SSDPErrorKind, SSDPResult};
+use header::{HeaderMut, HeaderRef};
 
 /// Only Valid `SearchResponse` Code
 const VALID_RESPONSE_CODE: u16 = 200;
 
 /// Appended To Destination Socket Addresses For URLs
-const BASE_HOST_URL: &'static str = "http://";
+const BASE_HOST_URL: &str = "http://";
 
 /// Case-Sensitive Method Names
-const NOTIFY_METHOD: &'static str = "NOTIFY";
-const SEARCH_METHOD: &'static str = "M-SEARCH";
+const NOTIFY_METHOD: &str = "NOTIFY";
+const SEARCH_METHOD: &str = "M-SEARCH";
 
 /// Represents an SSDP method combined with both SSDP and HTTP headers.
 #[derive(Debug, Clone)]
@@ -58,26 +60,27 @@ impl SSDPMessage {
     ///
     /// The host header field will be taken care of by the underlying library.
     pub fn send<A: ToSocketAddrs, C, S>(&self, connector: &mut C, dst_addr: A) -> SSDPResult<()>
-        where C: NetworkConnector<Stream = S>,
-              S: Into<Box<NetworkStream + Send>>
+    where
+        C: NetworkConnector<Stream = S>,
+        S: Into<Box<dyn NetworkStream + Send>>,
     {
-        let dst_sock_addr = try!(net::addr_from_trait(dst_addr));
+        let dst_sock_addr = net::addr_from_trait(dst_addr)?;
         match self.method {
             MessageType::Notify => {
-                trace!("Notify to: {:?}", dst_sock_addr);
+                log::trace!("Notify to: {:?}", dst_sock_addr);
                 send_request(NOTIFY_METHOD, &self.headers, connector, dst_sock_addr)
             }
             MessageType::Search => {
-                trace!("Sending search request...");
+                log::trace!("Sending search request...");
                 send_request(SEARCH_METHOD, &self.headers, connector, dst_sock_addr)
             }
             MessageType::Response => {
-                trace!("Sending response to: {:?}", dst_sock_addr);
+                log::trace!("Sending response to: {:?}", dst_sock_addr);
                 // This might need fixing for IPV6, passing down the IP loses the scope information
                 let dst_ip_string = dst_sock_addr.ip().to_string();
                 let dst_port = dst_sock_addr.port();
 
-                let net_stream = try!(connector.connect(&dst_ip_string[..], dst_port, "")).into();
+                let net_stream = connector.connect(&dst_ip_string[..], dst_port, "")?.into();
 
                 send_response(&self.headers, net_stream)
             }
@@ -87,59 +90,64 @@ impl SSDPMessage {
 
 #[allow(unused)]
 /// Send a request using the connector with the supplied method and headers.
-fn send_request<C, S>(method: &str,
-                      headers: &Headers,
-                      connector: &mut C,
-                      dst_addr: SocketAddr)
-                      -> SSDPResult<()>
-    where C: NetworkConnector<Stream = S>,
-          S: Into<Box<NetworkStream + Send>>
+fn send_request<C, S>(
+    method: &str,
+    headers: &Headers,
+    connector: &mut C,
+    dst_addr: SocketAddr,
+) -> SSDPResult<()>
+where
+    C: NetworkConnector<Stream = S>,
+    S: Into<Box<dyn NetworkStream + Send>>,
 {
-    trace!("Trying to parse url...");
-    let url = try!(url_from_addr(dst_addr));
-    trace!("Url: {}", url);
+    log::trace!("Trying to parse url...");
+    let url = url_from_addr(dst_addr)?;
+    log::trace!("Url: {}", url);
 
-    let mut request = try!(Request::with_connector(Method::Extension(method.to_owned()), url, connector));
+    let mut request = Request::with_connector(Method::Extension(method.to_owned()), url, connector)?;
 
-    trace!("Copying headers...");
+    log::trace!("Copying headers...");
     copy_headers(headers, request.headers_mut());
-    trace!("Setting length");
+    log::trace!("Setting length");
     request.headers_mut().set(ContentLength(0));
 
     // Send Will Always Fail Within The UdpConnector Which Is Intended So That
     // Hyper Does Not Block For A Response Since We Are Handling That Ourselves.
 
-    trace!("actual .send ...");
-    try!(request.start()).send();
+    log::trace!("actual .send ...");
+    request.start()?.send();
 
     Ok(())
 }
 
 /// Send an Ok response on the Writer with the supplied headers.
 fn send_response<W>(headers: &Headers, mut dst_writer: W) -> SSDPResult<()>
-    where W: Write
+where
+    W: Write,
 {
     let mut temp_headers = Headers::new();
 
     copy_headers(headers, &mut temp_headers);
     temp_headers.set(ContentLength(0));
 
-    let mut response = Response::new(&mut dst_writer as &mut Write, &mut temp_headers);
+    let mut response = Response::new(&mut dst_writer as &mut dyn Write, &mut temp_headers);
     *response.status_mut() = StatusCode::Ok;
 
     // Have to make sure response is destroyed here for lifetime issues with temp_headers
-    try!(try!(response.start()).end());
+    response.start()?.end()?;
 
     Ok(())
 }
 
 /// Convert the given address to a Url with a base of "udp://".
 fn url_from_addr(addr: SocketAddr) -> SSDPResult<Url> {
-    let str_url = BASE_HOST_URL.chars()
+    let str_url = BASE_HOST_URL
+        .chars()
         .chain(addr.to_string()[..].chars())
         .collect::<String>();
 
-    Ok(try!(Url::parse(&str_url[..])))
+    let url = Url::parse(&str_url[..])?;
+    Ok(url)
 }
 
 /// Copy the headers from the source header to the destination header.
@@ -157,7 +165,8 @@ fn copy_headers(src_headers: &Headers, dst_headers: &mut Headers) {
 
 impl HeaderRef for SSDPMessage {
     fn get<H>(&self) -> Option<&H>
-        where H: Header + HeaderFormat
+    where
+        H: Header + HeaderFormat,
     {
         HeaderRef::get::<H>(&self.headers)
     }
@@ -169,13 +178,15 @@ impl HeaderRef for SSDPMessage {
 
 impl HeaderMut for SSDPMessage {
     fn set<H>(&mut self, value: H)
-        where H: Header + HeaderFormat
+    where
+        H: Header + HeaderFormat,
     {
         HeaderMut::set(&mut self.headers, value)
     }
 
     fn set_raw<K>(&mut self, name: K, value: Vec<Vec<u8>>)
-        where K: Into<Cow<'static, str>> + Debug
+    where
+        K: Into<Cow<'static, str>> + Debug,
     {
         HeaderMut::set_raw(&mut self.headers, name, value)
     }
@@ -197,53 +208,51 @@ impl FromRawSSDP for SSDPMessage {
 
                     log_message_result(&message_result, bytes);
                     message_result
-                },
+                }
                 Err(err) => {
-                    debug!("Failed parsing http response: {}, data: {}", err, String::from_utf8_lossy(bytes));
+                    log::debug!(
+                        "Failed parsing http response: {}, data: {}",
+                        err,
+                        String::from_utf8_lossy(bytes)
+                    );
 
                     Err(SSDPErrorKind::InvalidHttp(bytes.to_owned()).into())
                 }
             }
-        } 
+        }
     }
 }
 
 /// Logs a debug! message based on the value of the `SSDPResult`.
 fn log_message_result(result: &SSDPResult<SSDPMessage>, message: &[u8]) {
     match *result {
-        Ok(_) => debug!("Received Valid SSDPMessage:\n{}", String::from_utf8_lossy(message)),
-        Err(ref e) => debug!("Received Invalid SSDPMessage Error: {}", e),
+        Ok(_) => log::debug!("Received Valid SSDPMessage:\n{}", String::from_utf8_lossy(message)),
+        Err(ref e) => log::debug!("Received Invalid SSDPMessage Error: {}", e),
     }
 }
 
 /// Attempts to construct an `SSDPMessage` from the given request pieces.
 fn message_from_request(parts: Incoming<(Method, RequestUri)>) -> SSDPResult<SSDPMessage> {
     let headers = parts.headers;
-
-    try!(validate_http_version(parts.version));
-    try!(validate_http_host(&headers));
+    validate_http_version(parts.version)?;
+    validate_http_host(&headers)?;
 
     match parts.subject {
-        (Method::Extension(n), RequestUri::Star) => {
-            match &n[..] {
-                NOTIFY_METHOD => {
-                    Ok(SSDPMessage {
-                        method: MessageType::Notify,
-                        headers: headers,
-                    })
-                }
-                SEARCH_METHOD => {
-                    Ok(SSDPMessage {
-                        method: MessageType::Search,
-                        headers: headers,
-                    })
-                }
-                _ => Err(SSDPErrorKind::InvalidMethod(n).into()),
-            }
-        }
+        (Method::Extension(n), RequestUri::Star) => match &n[..] {
+            NOTIFY_METHOD => Ok(SSDPMessage {
+                method: MessageType::Notify,
+                headers,
+            }),
+            SEARCH_METHOD => Ok(SSDPMessage {
+                method: MessageType::Search,
+                headers,
+            }),
+            _ => Err(SSDPErrorKind::InvalidMethod(n).into()),
+        },
         (n, RequestUri::Star) => Err(SSDPErrorKind::InvalidMethod(n.to_string()).into()),
-        (_, RequestUri::AbsolutePath(n)) |
-        (_, RequestUri::Authority(n)) => Err(SSDPErrorKind::InvalidUri(n).into()),
+        (_, RequestUri::AbsolutePath(n)) | (_, RequestUri::Authority(n)) => {
+            Err(SSDPErrorKind::InvalidUri(n).into())
+        }
         (_, RequestUri::AbsoluteUri(n)) => Err(SSDPErrorKind::InvalidUri(n.into_string()).into()),
     }
 }
@@ -253,12 +262,12 @@ fn message_from_response(parts: Incoming<RawStatus>) -> SSDPResult<SSDPMessage> 
     let RawStatus(status_code, _) = parts.subject;
     let headers = parts.headers;
 
-    try!(validate_http_version(parts.version));
-    try!(validate_response_code(status_code));
+    validate_http_version(parts.version)?;
+    validate_response_code(status_code)?;
 
     Ok(SSDPMessage {
         method: MessageType::Response,
-        headers: headers,
+        headers,
     })
 }
 
@@ -273,7 +282,8 @@ fn validate_http_version(version: HttpVersion) -> SSDPResult<()> {
 
 /// Validate that the Host header is present.
 fn validate_http_host<T>(headers: T) -> SSDPResult<()>
-    where T: HeaderRef
+where
+    T: HeaderRef,
 {
     // Shouldn't have to do this but hyper doesn't make sure that HTTP/1.1
     // messages contain Host headers so we will assure conformance ourselves.
@@ -296,10 +306,10 @@ fn validate_response_code(code: u16) -> SSDPResult<()> {
 #[cfg(test)]
 mod mocks {
     use std::cell::RefCell;
-    use std::io::{self, Read, Write, ErrorKind};
+    use std::io::{self, ErrorKind, Read, Write};
     use std::net::SocketAddr;
+    use std::sync::mpsc::{self, Receiver, Sender};
     use std::time::Duration;
-    use std::sync::mpsc::{self, Sender, Receiver};
 
     use hyper::error;
     use hyper::net::{NetworkConnector, NetworkStream};
@@ -310,7 +320,9 @@ mod mocks {
 
     impl MockConnector {
         pub fn new() -> MockConnector {
-            MockConnector { receivers: RefCell::new(Vec::new()) }
+            MockConnector {
+                receivers: RefCell::new(Vec::new()),
+            }
         }
     }
 
@@ -381,7 +393,7 @@ mod tests {
 
         use super::super::mocks::MockConnector;
         use super::super::SSDPMessage;
-        use message::MessageType;
+        use crate::message::MessageType;
 
         fn join_buffers(recv_list: &[Receiver<Vec<u8>>]) -> Vec<u8> {
             let mut buffer = Vec::new();
@@ -402,7 +414,7 @@ mod tests {
 
             message.send(&mut connector, ("127.0.0.1", 0)).unwrap();
 
-            let sent_message = String::from_utf8(join_buffers(&*connector.receivers.borrow())).unwrap();
+            let sent_message = String::from_utf8(join_buffers(&connector.receivers.borrow())).unwrap();
 
             assert_eq!(&sent_message[..19], "M-SEARCH * HTTP/1.1");
         }
@@ -414,7 +426,7 @@ mod tests {
 
             message.send(&mut connector, ("127.0.0.1", 0)).unwrap();
 
-            let sent_message = String::from_utf8(join_buffers(&*connector.receivers.borrow())).unwrap();
+            let sent_message = String::from_utf8(join_buffers(&connector.receivers.borrow())).unwrap();
 
             assert_eq!(&sent_message[..17], "NOTIFY * HTTP/1.1");
         }
@@ -426,7 +438,7 @@ mod tests {
 
             message.send(&mut connector, ("127.0.0.1", 0)).unwrap();
 
-            let sent_message = String::from_utf8(join_buffers(&*connector.receivers.borrow())).unwrap();
+            let sent_message = String::from_utf8(join_buffers(&connector.receivers.borrow())).unwrap();
 
             assert_eq!(&sent_message[..15], "HTTP/1.1 200 OK");
         }
@@ -438,13 +450,15 @@ mod tests {
 
             message.send(&mut connector, ("127.0.0.1", 0)).unwrap();
 
-            let sent_message = String::from_utf8(join_buffers(&*connector.receivers.borrow())).unwrap();
+            let sent_message = String::from_utf8(join_buffers(&connector.receivers.borrow())).unwrap();
 
             assert!(sent_message.contains("Host: 127.0.0.1:0"));
         }
     }
 
     mod parse {
+        use crate::{header, receiver};
+
         use super::super::SSDPMessage;
         use header::HeaderRef;
         use receiver::FromRawSSDP;

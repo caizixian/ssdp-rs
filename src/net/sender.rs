@@ -1,7 +1,7 @@
-use std::io::{self, ErrorKind, Read, Write};
-use std::net::{UdpSocket, SocketAddr};
-use std::time::Duration;
 use hyper::net::NetworkStream;
+use std::io::{self, ErrorKind, Read, Write};
+use std::net::{SocketAddr, UdpSocket};
+use std::time::Duration;
 
 /// A type that wraps a `UdpSocket` and a `SocketAddr` and implements the `NetworkStream`
 /// trait.
@@ -20,8 +20,8 @@ impl UdpSender {
     /// Creates a new UdpSender object.
     pub fn new(udp: UdpSocket, dst: SocketAddr) -> UdpSender {
         UdpSender {
-            udp: udp,
-            dst: dst,
+            udp,
+            dst,
             buf: Vec::new(),
         }
     }
@@ -67,7 +67,7 @@ impl Write for UdpSender {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        debug!("Sent HTTP Request:\n{}", String::from_utf8_lossy(&self.buf[..]));
+        log::debug!("Sent HTTP Request:\n{}", String::from_utf8_lossy(&self.buf[..]));
 
         let result = self.udp.send_to(&self.buf[..], self.dst);
         self.buf.clear();

@@ -1,6 +1,6 @@
-use std::io::{self, Error, ErrorKind};
-use std::net::{UdpSocket, SocketAddr};
 use std::fmt;
+use std::io::{self, Error, ErrorKind};
+use std::net::{SocketAddr, UdpSocket};
 
 /// Maximum length for packets received on a `PacketReceiver`.
 pub const MAX_PCKT_LEN: usize = 1500;
@@ -22,7 +22,7 @@ impl PacketReceiver {
     pub fn recv_pckt(&self) -> io::Result<(Vec<u8>, SocketAddr)> {
         let mut pckt_buf = vec![0u8; MAX_PCKT_LEN];
 
-        let (size, addr) = try!(self.0.recv_from(&mut pckt_buf));
+        let (size, addr) = self.0.recv_from(&mut pckt_buf)?;
 
         // Check For Something That SHOULD NEVER Occur.
         if size > pckt_buf.len() {

@@ -1,9 +1,9 @@
 use std::fmt::{Formatter, Result};
 
 use hyper::error::{self, Error};
-use hyper::header::{HeaderFormat, Header};
+use hyper::header::{Header, HeaderFormat};
 
-const CONFIGID_HEADER_NAME: &'static str = "CONFIGID.UPNP.ORG";
+const CONFIGID_HEADER_NAME: &str = "CONFIGID.UPNP.ORG";
 
 /// Represents a header used to denote the configuration of a device's DDD.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -22,7 +22,7 @@ impl Header for ConfigID {
         let cow_str = String::from_utf8_lossy(&raw[0][..]);
 
         // Value needs to be a 31 bit non-negative integer, so convert to i32
-        let value = match i32::from_str_radix(&*cow_str, 10) {
+        let value = match cow_str.parse::<i32>() {
             Ok(n) => n,
             Err(_) => return Err(Error::Header),
         };
@@ -43,7 +43,7 @@ impl Header for ConfigID {
 
 impl HeaderFormat for ConfigID {
     fn fmt_header(&self, fmt: &mut Formatter) -> Result {
-        try!(fmt.write_fmt(format_args!("{}", self.0)));
+        fmt.write_fmt(format_args!("{}", self.0))?;
 
         Ok(())
     }
