@@ -13,9 +13,11 @@ fn main() {
     println!("Request: {request:?}");
     // Iterate Over Streaming Responses
     for (response, src) in request.multicast().unwrap() {
-        let tv = get_tv_network(response, src);
+        let tv = get_tv_network(response.clone(), src);
         if let Some(tv) = tv {
             println!("Tv: {tv:?}");
+        } else {
+            println!("response: {response:?}");
         }
     }
 }
@@ -31,7 +33,6 @@ fn get_tv_network(response: SearchResponse, socket_address: SocketAddr) -> Optio
     let st = response.get::<ST>()?;
     let loc = response.get::<Location>()?;
     let wake_up = response.get_raw("WAKEUP")?;
-
     if *st != filter {
         return None;
     }
