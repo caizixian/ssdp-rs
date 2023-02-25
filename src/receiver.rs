@@ -149,7 +149,13 @@ where
 
         // Unwrap Will Cause A Panic If Receiver Hung Up Which Is Desired
         match T::raw_ssdp(&msg_bytes[..]) {
-            Ok(n) => send.send((n, addr)).unwrap(),
+            Ok(n) => match send.send((n, addr)) {
+                Ok(_) => {}
+                Err(e) => {
+                    log::error!("Error {e:?} on receive packages ");
+                    return;
+                }
+            },
             Err(_) => {
                 continue;
             }
