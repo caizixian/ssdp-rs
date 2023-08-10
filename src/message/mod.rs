@@ -157,7 +157,7 @@ fn is_not_globally(ip: &Ipv6Addr) -> bool {
 ///
 /// If any of the `SocketAddr`'s fail to resolve, this function will not return an error.
 fn get_local_addrs() -> io::Result<Vec<SocketAddr>> {
-    let iface_iter = get_if_addrs::get_if_addrs()?.into_iter();
+    let iface_iter = if_addrs::get_if_addrs()?.into_iter();
     Ok(iface_iter
         .map(|iface| SocketAddr::new(iface.addr.ip(), 0))
         .collect())

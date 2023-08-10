@@ -19,7 +19,7 @@ log = "0.4.17"
 net2 = "0.2.38"
 time = "0.3.19"
 error-chain = "0.12.4"
-get_if_addrs = "0.5.3"
+if-addrs = "0.10.1"
 regex = "1.7.1"
 
 [dependencies.hyper]
