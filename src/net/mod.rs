@@ -3,13 +3,10 @@
 //! This module deals with primitives for working with external libraries to write
 //! data to UDP sockets as a stream, and read data from UDP sockets as packets.
 
+use socket2::Socket;
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
 use std::net::{ToSocketAddrs, UdpSocket};
-
-#[cfg(not(windows))]
-use net2::unix::UnixUdpBuilderExt;
-use net2::UdpBuilder;
 
 pub mod connector;
 pub mod packet;
@@ -45,29 +42,19 @@ pub fn addr_from_trait<A: ToSocketAddrs>(addr: A) -> io::Result<SocketAddr> {
 pub fn bind_reuse<A: ToSocketAddrs>(local_addr: A) -> io::Result<UdpSocket> {
     let local_addr = addr_from_trait(local_addr)?;
 
-    let builder = match local_addr {
-        SocketAddr::V4(_) => UdpBuilder::new_v4()?,
-        SocketAddr::V6(_) => UdpBuilder::new_v6()?,
+    let socket = match local_addr {
+        SocketAddr::V4(_) => {
+            Socket::new(socket2::Domain::IPV4, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?
+        }
+        SocketAddr::V6(_) => {
+            Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?
+        }
     };
 
-    reuse_port(&builder)?;
-    builder.bind(local_addr)
-}
+    socket.set_reuse_address(true)?;
+    socket.bind(&socket2::SockAddr::from(local_addr))?;
 
-#[cfg(windows)]
-fn reuse_port(builder: &UdpBuilder) -> io::Result<()> {
-    // Allow wildcards + specific to not overlap
-    builder.reuse_address(true)?;
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn reuse_port(builder: &UdpBuilder) -> io::Result<()> {
-    // Allow wildcards + specific to not overlap
-    builder.reuse_address(true)?;
-    // Allow multiple listeners on the same port
-    builder.reuse_port(true)?;
-    Ok(())
+    Ok(socket.into())
 }
 
 /// Join a multicast address on the current `UdpSocket`.
