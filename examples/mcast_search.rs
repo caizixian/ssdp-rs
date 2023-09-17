@@ -1,7 +1,7 @@
 extern crate ssdp;
 
 use ssdp::header::{HeaderMut, Man, MX, ST};
-use ssdp::message::{SearchRequest, Multicast};
+use ssdp::message::{Multicast, SearchRequest};
 
 fn main() {
     // Create Our Search Request

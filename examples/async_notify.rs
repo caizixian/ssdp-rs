@@ -4,9 +4,9 @@ use std::io::{self, Read};
 use std::thread;
 use std::time::Duration;
 
-use ssdp::FieldMap;
 use ssdp::header::{HeaderMut, NT, NTS, USN};
-use ssdp::message::{NotifyListener, NotifyMessage, Listen, Multicast};
+use ssdp::message::{Listen, Multicast, NotifyListener, NotifyMessage};
+use ssdp::FieldMap;
 
 fn main() {
     thread::spawn(|| {

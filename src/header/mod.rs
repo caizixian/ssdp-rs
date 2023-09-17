@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 use std::fmt::Debug;
 
-use hyper::header::{Headers, Header, HeaderFormat};
+use hyper::header::{Header, HeaderFormat, Headers};
 
 mod bootid;
 mod configid;
@@ -32,22 +32,26 @@ pub use self::st::ST;
 pub use self::usn::USN;
 
 // Re-exports
-pub use hyper::header::{Location, Server, CacheControl, CacheDirective};
+pub use hyper::header::{CacheControl, CacheDirective, Location, Server};
 
 /// Trait for viewing the contents of a header structure.
 pub trait HeaderRef: Debug {
     /// View a reference to a header field if it exists.
-    fn get<H>(&self) -> Option<&H> where H: Header + HeaderFormat;
+    fn get<H>(&self) -> Option<&H>
+    where
+        H: Header + HeaderFormat;
 
     /// View a reference to the raw bytes of a header field if it exists.
     fn get_raw(&self, name: &str) -> Option<&[Vec<u8>]>;
 }
 
 impl<'a, T: ?Sized> HeaderRef for &'a T
-    where T: HeaderRef
+where
+    T: HeaderRef,
 {
     fn get<H>(&self) -> Option<&H>
-        where H: Header + HeaderFormat
+    where
+        H: Header + HeaderFormat,
     {
         HeaderRef::get::<H>(*self)
     }
@@ -58,10 +62,12 @@ impl<'a, T: ?Sized> HeaderRef for &'a T
 }
 
 impl<'a, T: ?Sized> HeaderRef for &'a mut T
-    where T: HeaderRef
+where
+    T: HeaderRef,
 {
     fn get<H>(&self) -> Option<&H>
-        where H: Header + HeaderFormat
+    where
+        H: Header + HeaderFormat,
     {
         HeaderRef::get::<H>(*self)
     }
@@ -73,7 +79,8 @@ impl<'a, T: ?Sized> HeaderRef for &'a mut T
 
 impl HeaderRef for Headers {
     fn get<H>(&self) -> Option<&H>
-        where H: Header + HeaderFormat
+    where
+        H: Header + HeaderFormat,
     {
         Headers::get::<H>(self)
     }
@@ -86,23 +93,30 @@ impl HeaderRef for Headers {
 /// Trait for manipulating the contents of a header structure.
 pub trait HeaderMut: Debug {
     /// Set a header to the given value.
-    fn set<H>(&mut self, value: H) where H: Header + HeaderFormat;
+    fn set<H>(&mut self, value: H)
+    where
+        H: Header + HeaderFormat;
 
     /// Set a header to the given raw bytes.
-    fn set_raw<K>(&mut self, name: K, value: Vec<Vec<u8>>) where K: Into<Cow<'static, str>> + Debug;
+    fn set_raw<K>(&mut self, name: K, value: Vec<Vec<u8>>)
+    where
+        K: Into<Cow<'static, str>> + Debug;
 }
 
 impl<'a, T: ?Sized> HeaderMut for &'a mut T
-    where T: HeaderMut
+where
+    T: HeaderMut,
 {
     fn set<H>(&mut self, value: H)
-        where H: Header + HeaderFormat
+    where
+        H: Header + HeaderFormat,
     {
         HeaderMut::set(*self, value)
     }
 
     fn set_raw<K>(&mut self, name: K, value: Vec<Vec<u8>>)
-        where K: Into<Cow<'static, str>> + Debug
+    where
+        K: Into<Cow<'static, str>> + Debug,
     {
         HeaderMut::set_raw(*self, name, value)
     }
@@ -110,13 +124,15 @@ impl<'a, T: ?Sized> HeaderMut for &'a mut T
 
 impl HeaderMut for Headers {
     fn set<H>(&mut self, value: H)
-        where H: Header + HeaderFormat
+    where
+        H: Header + HeaderFormat,
     {
         Headers::set(self, value)
     }
 
     fn set_raw<K>(&mut self, name: K, value: Vec<Vec<u8>>)
-        where K: Into<Cow<'static, str>> + Debug
+    where
+        K: Into<Cow<'static, str>> + Debug,
     {
         Headers::set_raw(self, name, value)
     }
